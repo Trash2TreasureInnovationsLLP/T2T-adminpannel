@@ -1694,8 +1694,6 @@ CREATE POLICY admin_read_write_tickets ON public.support_tickets FOR ALL USING (
 CREATE POLICY admin_read_write_coupons ON public.coupons FOR ALL USING (public.is_admin());
 CREATE POLICY admin_read_write_redemptions ON public.coupon_redemptions FOR ALL USING (public.is_admin());
 CREATE POLICY admin_read_users ON public.users FOR SELECT USING (public.is_admin());
-
--- Business Policies
 CREATE POLICY business_own_read_write ON public.businesses FOR ALL USING (auth_user_id = auth.uid());
 CREATE POLICY business_coupons_rw ON public.coupons FOR ALL USING (
     business_id IN (SELECT id FROM public.businesses WHERE auth_user_id = auth.uid())
