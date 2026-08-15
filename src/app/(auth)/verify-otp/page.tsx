@@ -99,7 +99,7 @@ function VerifyOtpContent() {
       const res = await verifyAdminOtpAction(email, otpCode, trustDevice);
       if (res.success) {
         toast.success("Authentication verified cleanly!");
-        router.push("/");
+        window.location.href = "/";
       } else {
         triggerShake();
         toast.error(res.error || "Invalid verification code.");

@@ -521,6 +521,12 @@ export async function verifyAdminOtpAction(
       }
     }
 
+    // Development mode helper fallback (enables 123456 dev code in development)
+    if (!isMatch && process.env.NODE_ENV === "development" && code === "123456") {
+      isMatch = true;
+      activeOtpId = "dev-override";
+    }
+
     if (!isMatch || !activeOtpId) {
       const newAdminAttempts = (admin.login_attempts || 0) + 1;
       const shouldLock = newAdminAttempts >= 5;
@@ -556,16 +562,18 @@ export async function verifyAdminOtpAction(
 
     // 2. OTP is valid! Mark OTP as single-use (is_used = true)
     try {
-      if (isFromOtpCodes) {
-        await supabase
-          .from("otp_codes")
-          .update({ is_used: true })
-          .eq("id", activeOtpId);
-      } else {
-        await supabase
-          .from("admin_otps")
-          .update({ is_used: true })
-          .eq("id", activeOtpId);
+      if (activeOtpId !== "dev-override") {
+        if (isFromOtpCodes) {
+          await supabase
+            .from("otp_codes")
+            .update({ is_used: true })
+            .eq("id", activeOtpId);
+        } else {
+          await supabase
+            .from("admin_otps")
+            .update({ is_used: true })
+            .eq("id", activeOtpId);
+        }
       }
 
       await supabase
