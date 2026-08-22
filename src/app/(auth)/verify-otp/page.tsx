@@ -2,12 +2,15 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Leaf, Loader2, RefreshCw, ArrowLeft, ShieldCheck, Lock, CheckCircle2 } from "lucide-react";
+import { Loader2, RefreshCw, ArrowLeft, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { verifyAdminOtpAction, requestAdminOtpAction } from "../actions";
 import { maskEmail } from "@/lib/auth-crypto";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { AuthHeader } from "@/components/auth/AuthHeader";
+import { AuthButton } from "@/components/auth/AuthButton";
+import { AuthFooter } from "@/components/auth/AuthFooter";
 
 function VerifyOtpContent() {
   const router = useRouter();
@@ -16,14 +19,13 @@ function VerifyOtpContent() {
 
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
   const [loading, setLoading] = useState(false);
-  const [timer, setTimer] = useState(300); // 5 minutes
-  const [resendCooldown, setResendCooldown] = useState(30); // 30 seconds resend cooldown
+  const [timer, setTimer] = useState(300);
+  const [resendCooldown, setResendCooldown] = useState(30);
   const [trustDevice, setTrustDevice] = useState(false);
   const [isShaking, setIsShaking] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // 5-minute expiry countdown timer
   useEffect(() => {
     if (timer <= 0) return;
     const interval = setInterval(() => {
@@ -32,7 +34,6 @@ function VerifyOtpContent() {
     return () => clearInterval(interval);
   }, [timer]);
 
-  // 30-second resend cooldown timer
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const interval = setInterval(() => {
@@ -48,7 +49,6 @@ function VerifyOtpContent() {
     newOtp[index] = value.slice(-1);
     setOtp(newOtp);
 
-    // Auto advance
     if (value && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
@@ -137,37 +137,18 @@ function VerifyOtpContent() {
     <motion.div
       animate={isShaking ? { x: [-10, 10, -10, 10, 0] } : {}}
       transition={{ duration: 0.4 }}
-      className="w-full rounded-2xl border border-white/10 bg-[#0A0A0C]/90 p-8 sm:p-9 shadow-2xl backdrop-blur-xl relative overflow-hidden"
+      className="w-full rounded-2xl border border-[#DDE6DE] bg-white p-8 sm:p-9 shadow-[0_8px_30px_rgba(0,0,0,0.06)] relative overflow-hidden"
     >
-      {/* Top Ambient Highlight Border */}
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#14EF10]/40 to-transparent" />
+      {/* Top Brand Accent Line */}
+      <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#4F7F2B] via-[#0F9D58] to-[#D7FF4F]" />
 
-      {/* Top Branding Header */}
-      <div className="flex flex-col items-center text-center">
-        <div className="group relative flex items-center justify-center">
-          <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-[#14EF10]/30 to-[#4F772D]/30 blur-md opacity-75 group-hover:opacity-100 transition duration-300" />
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0D140C] border border-[#14EF10]/40 text-[#14EF10] shadow-inner">
-            <Lock size={28} className="text-[#14EF10] drop-shadow-[0_0_8px_rgba(20,239,16,0.6)]" />
-          </div>
-        </div>
+      <AuthHeader
+        title="Verify Email OTP"
+        subtitle={`Sent a secure 6-digit code to ${maskEmail(email)}`}
+        badgeText="Two-Factor Security"
+        icon={<Lock size={28} className="text-[#4F7F2B]" />}
+      />
 
-        <div className="mt-5 flex flex-col items-center">
-          <div className="inline-flex items-center gap-2 rounded-full bg-[#14EF10]/10 border border-[#14EF10]/30 px-3 py-1 text-[11px] font-semibold text-[#14EF10] tracking-wide">
-            <ShieldCheck size={13} />
-            <span>Two-Factor Security</span>
-          </div>
-
-          <h1 className="mt-3 text-[26px] font-extrabold tracking-tight text-white sm:text-[28px]">
-            Verify Email OTP
-          </h1>
-          <p className="mt-1.5 text-[13px] text-neutral-400 max-w-[340px] leading-relaxed">
-            Sent a secure 6-digit code to{" "}
-            <span className="font-semibold text-white font-mono">{maskEmail(email)}</span>
-          </p>
-        </div>
-      </div>
-
-      {/* Form */}
       <form onSubmit={handleSubmit} className="mt-7 space-y-6">
         {/* Six Digit OTP Input Array */}
         <div className="flex items-center justify-center gap-2 sm:gap-2.5">
@@ -184,29 +165,28 @@ function VerifyOtpContent() {
               onChange={(e) => handleOtpChange(idx, e.target.value)}
               onKeyDown={(e) => handleKeyDown(idx, e)}
               onPaste={idx === 0 ? handlePaste : undefined}
-              className="h-13 w-11 sm:w-13 rounded-xl border border-white/10 bg-[#121216] text-center text-[20px] font-bold text-white focus:border-[#14EF10] focus:outline-none focus:ring-2 focus:ring-[#14EF10]/20 transition-all shadow-inner"
+              className="h-13 w-11 sm:w-13 rounded-xl border border-[#DDE6DE] bg-[#F5F8F4] text-center text-[20px] font-bold text-[#102A18] focus:border-[#4F7F2B] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#4F7F2B]/20 transition-all shadow-sm"
             />
           ))}
         </div>
 
         {/* Live Timer Countdown */}
-        <div className="flex items-center justify-between text-[13px] rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 text-neutral-400">
+        <div className="flex items-center justify-between text-[13px] rounded-xl border border-[#DDE6DE] bg-[#F5F8F4] px-4 py-3 text-[#5F6F64]">
           <span>Code Expiry Status:</span>
           {timer > 0 ? (
-            <span className="font-mono font-semibold text-[#14EF10]">
+            <span className="font-mono font-semibold text-[#4F7F2B]">
               {formatTimer(timer)}
             </span>
           ) : (
-            <span className="font-semibold text-red-400">Code expired</span>
+            <span className="font-semibold text-[#DC2626]">Code expired</span>
           )}
         </div>
 
         {/* Development Helper Banner */}
         {process.env.NODE_ENV === "development" && (
-          <div className="rounded-xl border border-[#14EF10]/30 bg-[#14EF10]/5 p-3 text-center text-[12px] text-neutral-300">
-            <span className="text-[#14EF10] font-semibold">🔑 Dev Terminal OTP Code:</span>{" "}
-            <code className="font-mono font-bold text-[#14EF10] bg-[#121216] px-2 py-0.5 rounded border border-[#14EF10]/20">123456</code>
-            <p className="text-[11px] text-neutral-500 mt-1">Check terminal output for live email OTP dispatches.</p>
+          <div className="rounded-xl border border-[#4F7F2B]/30 bg-[#4F7F2B]/5 p-3 text-center text-[12px] text-[#102A18]">
+            <span className="text-[#4F7F2B] font-semibold">🔑 Dev Terminal OTP Code:</span>{" "}
+            <code className="font-mono font-bold text-[#4F7F2B] bg-white px-2 py-0.5 rounded border border-[#DDE6DE]">123456</code>
           </div>
         )}
 
@@ -216,34 +196,27 @@ function VerifyOtpContent() {
             type="checkbox"
             checked={trustDevice}
             onChange={(e) => setTrustDevice(e.target.checked)}
-            className="h-4 w-4 rounded border-white/20 bg-[#121216] text-[#14EF10] focus:ring-[#14EF10] focus:ring-offset-0 cursor-pointer accent-[#14EF10]"
+            className="h-4 w-4 rounded border-[#DDE6DE] bg-white text-[#4F7F2B] focus:ring-[#4F7F2B] cursor-pointer accent-[#4F7F2B]"
           />
-          <span className="text-[13px] text-neutral-300 group-hover:text-white transition-colors">
+          <span className="text-[13px] text-[#5F6F64] group-hover:text-[#102A18] transition-colors">
             Trust this device for 30 days
           </span>
         </label>
 
         {/* Primary Action Button */}
-        <button
+        <AuthButton
           type="submit"
-          disabled={loading || otp.join("").length < 6}
-          className="group relative flex h-[50px] w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#14EF10] via-[#10d00d] to-[#059669] px-4 text-[14px] font-bold text-black shadow-[0_0_20px_rgba(20,239,16,0.35)] hover:shadow-[0_0_28px_rgba(20,239,16,0.5)] active:scale-[0.99] disabled:opacity-60 transition-all duration-200 cursor-pointer"
+          loading={loading}
+          disabled={otp.join("").length < 6}
         >
-          {loading ? (
-            <>
-              <Loader2 size={18} className="animate-spin text-black" />
-              <span>Verifying Code...</span>
-            </>
-          ) : (
-            <span>Verify & Authenticate</span>
-          )}
-        </button>
+          <span>Verify & Authenticate</span>
+        </AuthButton>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between pt-2 text-[13px] border-t border-white/5">
+        <div className="flex items-center justify-between pt-2 text-[13px] border-t border-[#DDE6DE]">
           <Link
             href="/login"
-            className="flex items-center gap-1.5 font-medium text-neutral-400 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 font-medium text-[#5F6F64] hover:text-[#102A18] transition-colors"
           >
             <ArrowLeft size={14} />
             <span>Back to Sign In</span>
@@ -253,7 +226,7 @@ function VerifyOtpContent() {
             type="button"
             onClick={handleResend}
             disabled={resendCooldown > 0}
-            className="flex items-center gap-1.5 font-semibold text-[#14EF10] hover:text-[#10d00d] hover:underline disabled:opacity-50 disabled:no-underline cursor-pointer"
+            className="flex items-center gap-1.5 font-semibold text-[#4F7F2B] hover:text-[#3f6622] hover:underline disabled:opacity-50 disabled:no-underline cursor-pointer"
           >
             <RefreshCw size={13} className={resendCooldown > 0 ? "animate-spin" : ""} />
             <span>
@@ -262,6 +235,8 @@ function VerifyOtpContent() {
           </button>
         </div>
       </form>
+
+      <AuthFooter />
     </motion.div>
   );
 }
@@ -270,7 +245,7 @@ export default function VerifyOtpPage() {
   return (
     <Suspense
       fallback={
-        <div className="w-full rounded-2xl border border-white/10 bg-[#0A0A0C]/90 p-12 text-center text-neutral-400">
+        <div className="w-full rounded-2xl border border-[#DDE6DE] bg-white p-12 text-center text-[#5F6F64]">
           Loading verification portal...
         </div>
       }

@@ -5,25 +5,28 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as zod from "zod";
-import { Mail, Loader2, ArrowLeft, CheckCircle, Leaf, KeyRound } from "lucide-react";
+import { Mail, ArrowLeft, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { requestPasswordResetAction } from "../actions";
+import { AuthHeader } from "@/components/auth/AuthHeader";
+import { AuthInput } from "@/components/auth/AuthInput";
+import { AuthButton } from "@/components/auth/AuthButton";
+import { AuthError, AuthSuccess } from "@/components/auth/AuthAlert";
+import { AuthFooter } from "@/components/auth/AuthFooter";
 
 const forgotPasswordSchema = zod.object({
-  email: zod.string().email("Invalid administrator email address"),
+  email: zod.string().email("Please enter a valid administrator email address"),
 });
 
 type ForgotPasswordValues = zod.infer<typeof forgotPasswordSchema>;
-
-
-
-
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const {
     register,
@@ -35,17 +38,18 @@ export default function ForgotPasswordPage() {
 
   const onSubmit = async (data: ForgotPasswordValues) => {
     setLoading(true);
+    setErrorMessage(null);
+
     try {
       const res = await requestPasswordResetAction(data.email);
       if (res.success) {
         setSubmitted(true);
-        toast.success(res.message || "Password reset instructions sent to your email!");
+        toast.success("Password reset instructions dispatched!");
       } else {
-        toast.error(res.error || "Failed to process request");
+        setErrorMessage(res.error || "Failed to process request.");
       }
     } catch (error) {
-      console.error("[ForgotPassword Submit Error]:", error);
-      toast.error("An unexpected error occurred. Please try again.");
+      setErrorMessage("An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -53,98 +57,64 @@ export default function ForgotPasswordPage() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-      className="w-full rounded-2xl border border-white/10 bg-[#0A0A0C]/90 p-8 sm:p-9 shadow-2xl backdrop-blur-xl relative overflow-hidden"
+      transition={{ duration: 0.3 }}
+      className="w-full rounded-2xl border border-[#DDE6DE] bg-white p-8 sm:p-9 shadow-[0_8px_30px_rgba(0,0,0,0.06)] relative overflow-hidden"
     >
-      {/* Top Ambient Highlight Border */}
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#14EF10]/40 to-transparent" />
+      {/* Top Brand Accent Line */}
+      <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#4F7F2B] via-[#0F9D58] to-[#D7FF4F]" />
 
-      {/* Top Branding Header */}
-      <div className="flex flex-col items-center text-center">
-        <div className="group relative flex items-center justify-center">
-          <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-[#14EF10]/30 to-[#4F772D]/30 blur-md opacity-75 group-hover:opacity-100 transition duration-300" />
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0D140C] border border-[#14EF10]/40 text-[#14EF10] shadow-inner">
-            <KeyRound size={28} className="text-[#14EF10] drop-shadow-[0_0_8px_rgba(20,239,16,0.6)]" />
-          </div>
-        </div>
-
-        <div className="mt-5 flex flex-col items-center">
-          <h1 className="text-[26px] font-extrabold tracking-tight text-white sm:text-[28px]">
-            Reset Password
-          </h1>
-          <p className="mt-1.5 text-[13px] text-neutral-400 max-w-[320px] leading-relaxed">
-            Enter your admin email to receive secure recovery instructions
-          </p>
-        </div>
-      </div>
+      <AuthHeader
+        title="Reset Password"
+        subtitle="Enter your administrator email address to receive secure password recovery instructions."
+        badgeText="Account Recovery"
+        icon={<KeyRound size={28} className="text-[#4F7F2B]" />}
+      />
 
       {submitted ? (
-        <div className="mt-7 rounded-xl border border-[#14EF10]/30 bg-[#14EF10]/5 p-6 text-center space-y-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#14EF10]/15 text-[#14EF10] border border-[#14EF10]/30 mx-auto">
-            <CheckCircle size={24} />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-[16px] font-bold text-white">
-              Check your email inbox
-            </h3>
-            <p className="text-[13px] text-neutral-400 leading-relaxed max-w-[300px] mx-auto">
-              We have dispatched recovery instructions to your email address if an active admin account exists.
-            </p>
-          </div>
-          <button
-            onClick={() => router.push("/login")}
-            className="inline-flex items-center justify-center gap-2 text-[13px] font-bold text-[#14EF10] hover:text-[#10d00d] hover:underline pt-2"
+        <div className="mt-7 space-y-5">
+          <AuthSuccess message="Check your inbox: If an account exists for that email address, reset instructions have been sent. Check your spam folder if necessary." />
+
+          <Link
+            href="/login"
+            className="flex h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-[#DDE6DE] bg-[#F5F8F4] text-[13px] font-bold text-[#102A18] hover:bg-[#DDE6DE]/50 transition-colors"
           >
             <ArrowLeft size={16} />
             <span>Return to Sign In</span>
-          </button>
+          </Link>
         </div>
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-5">
-          <div className="space-y-2">
-            <label className="block text-[13px] font-medium text-neutral-300">
-              Admin Email Address
-            </label>
-            <div className="relative flex items-center">
-              <Mail size={18} className="absolute left-3.5 text-neutral-500 pointer-events-none" />
-              <input
-                type="email"
-                {...register("email")}
-                placeholder="admin@t2t.com"
-                className="h-[48px] w-full rounded-xl border border-white/10 bg-[#121216] pl-10 pr-4 text-[14px] text-white placeholder:text-neutral-600 focus:border-[#14EF10] focus:ring-2 focus:ring-[#14EF10]/20 focus:outline-none transition-all duration-200"
-              />
-            </div>
-            {errors.email && (
-              <p className="text-[12px] font-medium text-red-400 pl-1">{errors.email.message}</p>
-            )}
-          </div>
+          <AuthError message={errorMessage} />
+
+          <AuthInput
+            {...register("email")}
+            label="Admin Email Address"
+            type="email"
+            autoComplete="email"
+            placeholder="admin@trash2treasure.co.in"
+            icon={<Mail size={18} />}
+            error={errors.email?.message}
+          />
 
           <div className="flex flex-col gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className="group relative flex h-[50px] w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#14EF10] via-[#10d00d] to-[#059669] px-4 text-[14px] font-bold text-black shadow-[0_0_20px_rgba(20,239,16,0.35)] hover:shadow-[0_0_28px_rgba(20,239,16,0.5)] active:scale-[0.99] disabled:opacity-60 transition-all duration-200 cursor-pointer"
-            >
-              {loading ? (
-                <Loader2 size={18} className="animate-spin text-black" />
-              ) : (
-                <span>Send Reset Instructions</span>
-              )}
-            </button>
+            <AuthButton type="submit" loading={loading}>
+              <span>Send Reset Instructions</span>
+            </AuthButton>
 
-            <button
-              type="button"
-              onClick={() => router.push("/login")}
-              className="flex h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] text-[13px] font-semibold text-neutral-300 hover:text-white hover:bg-white/10 transition-colors"
+            <Link
+              href="/login"
+              className="flex h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-[#DDE6DE] bg-[#F5F8F4] text-[13px] font-semibold text-[#5F6F64] hover:text-[#102A18] hover:bg-[#DDE6DE]/50 transition-colors"
             >
               <ArrowLeft size={16} />
               <span>Cancel and back to sign in</span>
-            </button>
+            </Link>
           </div>
         </form>
       )}
+
+      <AuthFooter />
     </motion.div>
   );
 }
