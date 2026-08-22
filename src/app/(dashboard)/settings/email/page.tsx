@@ -2,45 +2,77 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { 
-  ArrowLeft, 
-  Mail, 
-  Key, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Send, 
-  Terminal, 
-  RefreshCw, 
-  Lock,
-  Smartphone,
-  Eye,
-  EyeOff
+import {
+  ArrowLeft,
+  Mail,
+  CheckCircle2,
+  AlertTriangle,
+  Send,
+  RefreshCw,
+  Globe,
+  ShieldCheck,
+  FileText,
+  XCircle,
+  RotateCw,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
-import { getEmailSettings } from "./actions";
+import { getEmailSettings, getEmailLogsAction, sendAdminTestEmailAction, retryFailedEmailAction } from "./actions";
+import { EmailCategory } from "@/lib/email/types";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
+
+const CATEGORIES: Array<{ id: EmailCategory | "all"; label: string }> = [
+  { id: "all", label: "All Categories" },
+  { id: "auth", label: "Auth" },
+  { id: "users", label: "Users" },
+  { id: "waste", label: "Waste" },
+  { id: "rewards", label: "Rewards" },
+  { id: "pickups", label: "Pickups" },
+  { id: "bins", label: "Bins" },
+  { id: "payments", label: "Payments" },
+  { id: "admin", label: "Admin" },
+  { id: "system", label: "System" },
+  { id: "marketing", label: "Marketing" },
+];
 
 export default function EmailSettingsPage() {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [config, setConfig] = useState({
-    resendConfigured: false,
-    emailFrom: "",
+    provider: "resend",
+    isConfigured: true,
+    resendConfigured: true,
+    emailFrom: "noreply@trash2treasure.co.in",
+    adminSender: "Trash2Treasure Admin <admin@trash2treasure.co.in>",
+    supportSender: "Trash2Treasure Support <support@trash2treasure.co.in>",
+    domain: "trash2treasure.co.in",
   });
 
-  // Test Email States
-  const [testTo, setTestTo] = useState("");
-  const [testSubject, setTestSubject] = useState("T2T Test Email");
-  const [testHtml, setTestHtml] = useState("<p>This is a test email sent from the Trash2Treasure Admin Panel.</p>");
-  const [sendingEmail, setSendingEmail] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<EmailCategory | "all">("all");
+  const [logs, setLogs] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    total: 0,
+    sent: 0,
+    failed: 0,
+    lastSuccessful: null as string | null,
+    lastFailed: null as string | null,
+  });
+  const [loadingLogs, setLoadingLogs] = useState(true);
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [retryingLogId, setRetryingLogId] = useState<string | null>(null);
 
-  // OTP Sandbox States
-  const [otpEmail, setOtpEmail] = useState("");
-  const [requestingOtp, setRequestingOtp] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
-  const [otpMessage, setOtpMessage] = useState<{ success: boolean; text: string } | null>(null);
+  const fetchLogs = async (category: EmailCategory | "all" = selectedCategory) => {
+    setLoadingLogs(true);
+    try {
+      const res = await getEmailLogsAction(category);
+      if (res.success && res.logs) {
+        setLogs(res.logs);
+        if (res.stats) setStats(res.stats);
+      }
+    } catch (err) {
+      console.error("Failed to fetch email logs", err);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
 
   useEffect(() => {
     getEmailSettings()
@@ -49,116 +81,50 @@ export default function EmailSettingsPage() {
       })
       .catch((err) => {
         console.error("Failed to load email settings", err);
-        toast.error("Could not load email configurations.");
       })
       .finally(() => {
         setLoadingConfig(false);
       });
+
+    fetchLogs("all");
   }, []);
 
-  const handleSendTestEmail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!testTo) {
-      toast.error("Recipient email is required.");
-      return;
-    }
+  const handleCategoryChange = (cat: EmailCategory | "all") => {
+    setSelectedCategory(cat);
+    fetchLogs(cat);
+  };
 
-    setSendingEmail(true);
+  const handleSendTestEmail = async () => {
+    setSendingTestEmail(true);
     try {
-      const response = await fetch("/api/email/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: testTo,
-          subject: testSubject,
-          html: testHtml,
-        }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        toast.success(
-          config.resendConfigured 
-            ? "Test email sent successfully via Resend!" 
-            : "Email simulated! Check server terminal logs."
-        );
+      const res = await sendAdminTestEmailAction();
+      if (res.success) {
+        toast.success(res.message || "Test email dispatched cleanly via Resend!");
+        fetchLogs(selectedCategory);
       } else {
-        toast.error(data.error || "Failed to send test email.");
+        toast.error(typeof res.error === "string" ? res.error : "Failed to send test email.");
       }
     } catch (err) {
-      toast.error("An error occurred. Please check console.");
-      console.error(err);
+      toast.error("An unexpected error occurred sending test email.");
     } finally {
-      setSendingEmail(false);
+      setSendingTestEmail(false);
     }
   };
 
-  const handleSendOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpEmail) {
-      toast.error("Email is required for OTP.");
-      return;
-    }
-
-    setRequestingOtp(true);
-    setOtpMessage(null);
+  const handleRetryEmail = async (logId: string) => {
+    setRetryingLogId(logId);
     try {
-      const response = await fetch("/api/otp/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: otpEmail }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        setOtpSent(true);
-        toast.success(
-          config.resendConfigured
-            ? "Verification OTP sent to your email!"
-            : "OTP generated! Check terminal console logs."
-        );
+      const res = await retryFailedEmailAction(logId);
+      if (res.success) {
+        toast.success("Failed email re-dispatched successfully!");
+        fetchLogs(selectedCategory);
       } else {
-        toast.error(data.error || "Failed to generate OTP.");
+        toast.error(typeof res.error === "string" ? res.error : "Retry failed.");
       }
     } catch (err) {
-      toast.error("An error occurred during OTP generation.");
-      console.error(err);
+      toast.error("Error retrying email dispatch.");
     } finally {
-      setRequestingOtp(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpCode || otpCode.length !== 6) {
-      toast.error("Please enter a valid 6-digit OTP code.");
-      return;
-    }
-
-    setVerifyingOtp(true);
-    try {
-      const response = await fetch("/api/otp/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: otpEmail,
-          code: otpCode,
-        }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        setOtpMessage({ success: true, text: "Verification successful! The OTP is valid." });
-        toast.success("OTP verified successfully!");
-      } else {
-        setOtpMessage({ success: false, text: data.error || "Verification failed." });
-        toast.error(data.error || "Invalid OTP code.");
-      }
-    } catch (err) {
-      toast.error("An error occurred during verification.");
-      console.error(err);
-    } finally {
-      setVerifyingOtp(false);
+      setRetryingLogId(null);
     }
   };
 
@@ -166,254 +132,231 @@ export default function EmailSettingsPage() {
     <div className="space-y-8">
       {/* Header with back button */}
       <div className="flex flex-col gap-3">
-        <Link 
+        <Link
           href="/settings"
           className="flex items-center gap-2 text-xs font-semibold text-[var(--t2t-text-secondary)] hover:text-[var(--t2t-primary)] transition-colors self-start"
         >
           <ArrowLeft size={14} /> Back to Settings
         </Link>
-        <PageHeader 
-          title="Email Integrations & APIs" 
-          description="Configure Resend, dispatch transactional emails, and simulate OTP authentication." 
+        <PageHeader
+          title="Central Email Center & Communications"
+          description="Master email infrastructure serving Auth, Waste, EcoPoints, Rewards, Pickups, Bins, Payments, and Admin Alerts."
         />
       </div>
 
+      {/* Main Grid */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        
-        {/* Connection Status Card */}
+        {/* Provider Status Card */}
         <div className="lg:col-span-3">
           <div className="relative overflow-hidden rounded-2xl border border-[var(--t2t-border)] bg-[var(--t2t-surface)] p-6 shadow-[var(--t2t-shadow-sm)]">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-3">
-                  <h2 className="text-lg font-bold text-[var(--t2t-text)]">Resend Provider Status</h2>
+                  <h2 className="text-lg font-bold text-[var(--t2t-text)]">Central Provider: Resend Engine</h2>
                   {loadingConfig ? (
                     <RefreshCw size={14} className="animate-spin text-[var(--t2t-text-muted)]" />
-                  ) : config.resendConfigured ? (
+                  ) : config.isConfigured ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-500 border border-emerald-500/20">
-                      <CheckCircle2 size={12} /> Active (Live)
+                      <CheckCircle2 size={12} /> Active (Production Ready)
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-500 border border-amber-500/20">
-                      <AlertTriangle size={12} /> Simulator Mode (Dev)
+                      <AlertTriangle size={12} /> Missing API Key
                     </span>
                   )}
                 </div>
                 <p className="text-sm text-[var(--t2t-text-secondary)]">
-                  Manage configuration settings for email delivery services.
+                  One central email service routing all T2T ecosystem dispatches through Resend with automatic retry and audit logging.
                 </p>
               </div>
 
-              {!loadingConfig && !config.resendConfigured && (
-                <div className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-amber-500 text-xs max-w-md">
-                  <Terminal size={16} className="shrink-0 mt-0.5" />
-                  <p>
-                    <strong>Notice:</strong> Define <code>RESEND_API_KEY</code> and <code>EMAIL_FROM</code> in your local <code>.env</code> file to enable live delivery to actual inboxes.
-                  </p>
-                </div>
-              )}
+              {/* Action Button */}
+              <button
+                onClick={handleSendTestEmail}
+                disabled={sendingTestEmail}
+                className="h-10 px-5 rounded-xl bg-[var(--t2t-primary)] text-black hover:bg-[var(--t2t-primary)]/90 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition-all shrink-0 shadow-[0_0_16px_rgba(20,239,16,0.3)]"
+              >
+                {sendingTestEmail ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" /> Dispatching Test Email...
+                  </>
+                ) : (
+                  <>
+                    <Send size={14} /> Send Test Email
+                  </>
+                )}
+              </button>
             </div>
 
             <hr className="my-5 border-[var(--t2t-border)]" />
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-1.5">
-                <span className="text-xs text-[var(--t2t-text-muted)] uppercase tracking-wider font-semibold">Service Provider</span>
-                <p className="text-sm font-semibold text-[var(--t2t-text)] flex items-center gap-2">
-                  <Mail size={16} className="text-[var(--t2t-primary)]" /> Resend SMTP/API Client
+                <span className="text-xs text-[var(--t2t-text-muted)] uppercase tracking-wider font-semibold">
+                  Default Sender
+                </span>
+                <p className="text-sm font-semibold text-[var(--t2t-text)] truncate flex items-center gap-2">
+                  <Mail size={15} className="text-[var(--t2t-primary)] shrink-0" />
+                  <span>Trash2Treasure &lt;noreply@trash2treasure.co.in&gt;</span>
                 </p>
               </div>
               <div className="space-y-1.5">
-                <span className="text-xs text-[var(--t2t-text-muted)] uppercase tracking-wider font-semibold">Sender Identity</span>
-                <p className="text-sm font-semibold text-[var(--t2t-text)] truncate">
-                  {loadingConfig ? "Checking..." : config.emailFrom}
+                <span className="text-xs text-[var(--t2t-text-muted)] uppercase tracking-wider font-semibold">
+                  Admin Sender
+                </span>
+                <p className="text-sm font-semibold text-[var(--t2t-text)] truncate flex items-center gap-2">
+                  <ShieldCheck size={15} className="text-[var(--t2t-primary)] shrink-0" />
+                  <span>Trash2Treasure Admin &lt;admin@trash2treasure.co.in&gt;</span>
                 </p>
               </div>
               <div className="space-y-1.5">
-                <span className="text-xs text-[var(--t2t-text-muted)] uppercase tracking-wider font-semibold">Auth Protocol</span>
-                <p className="text-sm font-semibold text-[var(--t2t-text)] flex items-center gap-2">
-                  <Lock size={16} className="text-[var(--t2t-primary)]" /> AES-256 OTP Hashes (Database)
+                <span className="text-xs text-[var(--t2t-text-muted)] uppercase tracking-wider font-semibold">
+                  Support Sender
+                </span>
+                <p className="text-sm font-semibold text-[var(--t2t-text)] truncate flex items-center gap-2">
+                  <Globe size={15} className="text-[var(--t2t-primary)] shrink-0" />
+                  <span>Trash2Treasure Support &lt;support@trash2treasure.co.in&gt;</span>
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Test Email Dispatcher */}
-        <div className="lg:col-span-1">
-          <div className="rounded-2xl border border-[var(--t2t-border)] bg-[var(--t2t-surface)] p-6 shadow-[var(--t2t-shadow-sm)] flex flex-col h-full">
-            <div className="mb-5">
-              <h3 className="text-base font-bold text-[var(--t2t-text)] flex items-center gap-2">
-                <Send size={18} className="text-[var(--t2t-primary)]" /> Mail Dispatcher
-              </h3>
-              <p className="text-xs text-[var(--t2t-text-secondary)] mt-1">
-                Send a raw transactional email via `/api/email/send`.
-              </p>
+        {/* Operational Stats Cards */}
+        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="p-4 rounded-xl border border-[var(--t2t-border)] bg-[var(--t2t-surface)] space-y-1">
+            <span className="text-xs font-semibold text-[var(--t2t-text-muted)] uppercase">Total Logged Emails</span>
+            <div className="text-2xl font-extrabold text-[var(--t2t-text)]">{stats.total}</div>
+          </div>
+          <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 space-y-1">
+            <span className="text-xs font-semibold text-emerald-400 uppercase">Successfully Sent</span>
+            <div className="text-2xl font-extrabold text-emerald-400">{stats.sent}</div>
+          </div>
+          <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/5 space-y-1">
+            <span className="text-xs font-semibold text-red-400 uppercase">Failed Delivery</span>
+            <div className="text-2xl font-extrabold text-red-400">{stats.failed}</div>
+          </div>
+          <div className="p-4 rounded-xl border border-[var(--t2t-border)] bg-[var(--t2t-surface)] space-y-1">
+            <span className="text-xs font-semibold text-[var(--t2t-text-muted)] uppercase">Last Successful Dispatch</span>
+            <div className="text-xs font-mono font-medium text-[var(--t2t-text-secondary)] mt-1">
+              {stats.lastSuccessful ? new Date(stats.lastSuccessful).toLocaleString() : "None Recorded"}
             </div>
+          </div>
+        </div>
 
-            <form onSubmit={handleSendTestEmail} className="space-y-4 flex-1 flex flex-col">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[var(--t2t-text-secondary)]">Recipient Address</label>
-                <input 
-                  type="email" 
-                  placeholder="admin@test.com" 
-                  value={testTo}
-                  onChange={(e) => setTestTo(e.target.value)}
-                  className="w-full h-9 px-3 rounded border border-[var(--t2t-border)] bg-[var(--t2t-surface-hover)] text-sm text-[var(--t2t-text)] focus:border-[var(--t2t-primary)] focus:outline-none transition-all"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[var(--t2t-text-secondary)]">Subject</label>
-                <input 
-                  type="text" 
-                  value={testSubject}
-                  onChange={(e) => setTestSubject(e.target.value)}
-                  className="w-full h-9 px-3 rounded border border-[var(--t2t-border)] bg-[var(--t2t-surface-hover)] text-sm text-[var(--t2t-text)] focus:border-[var(--t2t-primary)] focus:outline-none transition-all"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5 flex-1 flex flex-col">
-                <label className="text-xs font-semibold text-[var(--t2t-text-secondary)]">HTML Body</label>
-                <textarea 
-                  value={testHtml}
-                  onChange={(e) => setTestHtml(e.target.value)}
-                  className="w-full flex-1 min-h-[120px] p-3 rounded border border-[var(--t2t-border)] bg-[var(--t2t-surface-hover)] text-sm font-mono text-[var(--t2t-text)] focus:border-[var(--t2t-primary)] focus:outline-none transition-all resize-none"
-                  required
-                />
+        {/* Admin Email Center Table */}
+        <div className="lg:col-span-3">
+          <div className="rounded-2xl border border-[var(--t2t-border)] bg-[var(--t2t-surface)] p-6 shadow-[var(--t2t-shadow-sm)] flex flex-col space-y-5">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-[var(--t2t-text)] flex items-center gap-2">
+                  <FileText size={18} className="text-[var(--t2t-primary)]" /> Admin Email Center
+                </h3>
+                <p className="text-xs text-[var(--t2t-text-secondary)] mt-0.5">
+                  Centralized audit log of all email events across the T2T ecosystem.
+                </p>
               </div>
 
               <button
-                type="submit"
-                disabled={sendingEmail}
-                className="w-full h-9 rounded bg-[var(--t2t-primary)] text-black hover:bg-[var(--t2t-primary)]/80 font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition-all mt-4"
+                onClick={() => fetchLogs(selectedCategory)}
+                disabled={loadingLogs}
+                className="p-2 rounded-lg border border-[var(--t2t-border)] text-[var(--t2t-text-secondary)] hover:text-white hover:bg-[var(--t2t-surface-hover)] transition-colors cursor-pointer self-start md:self-auto"
+                title="Refresh Logs"
               >
-                {sendingEmail ? (
-                  <>
-                    <RefreshCw size={14} className="animate-spin" /> Dispatching...
-                  </>
-                ) : (
-                  <>
-                    <Send size={14} /> Send Email
-                  </>
-                )}
+                <RefreshCw size={14} className={loadingLogs ? "animate-spin" : ""} />
               </button>
-            </form>
-          </div>
-        </div>
-
-        {/* OTP Sandbox */}
-        <div className="lg:col-span-2">
-          <div className="rounded-2xl border border-[var(--t2t-border)] bg-[var(--t2t-surface)] p-6 shadow-[var(--t2t-shadow-sm)] h-full flex flex-col">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-[var(--t2t-text)] flex items-center gap-2">
-                  <Smartphone size={18} className="text-[var(--t2t-primary)]" /> OTP Verification Sandbox
-                </h3>
-                <p className="text-xs text-[var(--t2t-text-secondary)] mt-1">
-                  Request and verify one-time passwords through `/api/otp/send` and `/api/otp/verify`.
-                </p>
-              </div>
             </div>
 
-            <div className="space-y-6 flex-1 flex flex-col justify-center">
-              
-              {/* Step 1: Send OTP */}
-              <div className="p-5 rounded-xl border border-[var(--t2t-border)] bg-[var(--t2t-surface-hover)]">
-                <div className="flex items-center gap-2.5 mb-4">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--t2t-primary-subtle)] text-xs font-bold text-[var(--t2t-primary)]">
-                    1
-                  </div>
-                  <h4 className="text-sm font-semibold text-[var(--t2t-text)]">Request OTP Code</h4>
-                </div>
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-[var(--t2t-border)]">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => handleCategoryChange(cat.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                    selectedCategory === cat.id
+                      ? "bg-[var(--t2t-primary)] text-black font-bold"
+                      : "text-[var(--t2t-text-secondary)] hover:text-white hover:bg-[var(--t2t-surface-hover)]"
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
 
-                <form onSubmit={handleSendOtp} className="flex flex-col md:flex-row gap-3">
-                  <input 
-                    type="email" 
-                    placeholder="Enter recipient email address..." 
-                    value={otpEmail}
-                    onChange={(e) => setOtpEmail(e.target.value)}
-                    disabled={otpSent && requestingOtp}
-                    className="flex-1 h-9 px-3 rounded border border-[var(--t2t-border)] bg-[var(--t2t-surface)] text-sm text-[var(--t2t-text)] focus:border-[var(--t2t-primary)] focus:outline-none transition-all"
-                    required
-                  />
-                  <button
-                    type="submit"
-                    disabled={requestingOtp}
-                    className="h-9 px-4 rounded bg-[var(--t2t-primary)] text-black hover:bg-[var(--t2t-primary)]/80 font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition-all shrink-0"
-                  >
-                    {requestingOtp ? (
-                      <>
-                        <RefreshCw size={14} className="animate-spin" /> Requesting...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw size={14} /> {otpSent ? "Resend Code" : "Request Code"}
-                      </>
-                    )}
-                  </button>
-                </form>
-              </div>
-
-              {/* Step 2: Verify OTP */}
-              <div className={`p-5 rounded-xl border transition-all ${otpSent ? "border-[var(--t2t-border)] bg-[var(--t2t-surface-hover)]" : "border-[var(--t2t-border)]/40 bg-[var(--t2t-surface-hover)]/20 opacity-50"}`}>
-                <div className="flex items-center gap-2.5 mb-4">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--t2t-primary-subtle)] text-xs font-bold text-[var(--t2t-primary)]">
-                    2
-                  </div>
-                  <h4 className="text-sm font-semibold text-[var(--t2t-text)]">Verify OTP Code</h4>
-                </div>
-
-                <form onSubmit={handleVerifyOtp} className="flex flex-col md:flex-row gap-3">
-                  <input 
-                    type="text" 
-                    placeholder="Enter 6-digit verification code..." 
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").substring(0, 6))}
-                    disabled={!otpSent || verifyingOtp}
-                    className="flex-1 h-9 px-3 rounded border border-[var(--t2t-border)] bg-[var(--t2t-surface)] text-sm text-[var(--t2t-text)] font-mono tracking-wider focus:border-[var(--t2t-primary)] focus:outline-none transition-all"
-                    required
-                  />
-                  <button
-                    type="submit"
-                    disabled={!otpSent || verifyingOtp}
-                    className="h-9 px-5 rounded bg-white text-black hover:bg-neutral-200 font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0"
-                  >
-                    {verifyingOtp ? (
-                      <>
-                        <RefreshCw size={14} className="animate-spin" /> Verifying...
-                      </>
-                    ) : (
-                      "Confirm Code"
-                    )}
-                  </button>
-                </form>
-
-                {/* Verification Feedback Banner */}
-                {otpMessage && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 5 }} 
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`mt-4 p-3 rounded-lg border text-xs flex items-start gap-2.5 ${otpMessage.success ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}
-                  >
-                    {otpMessage.success ? (
-                      <CheckCircle2 size={16} className="shrink-0" />
-                    ) : (
-                      <AlertTriangle size={16} className="shrink-0" />
-                    )}
-                    <div>
-                      <strong>{otpMessage.success ? "Success" : "Error"}:</strong> {otpMessage.text}
-                    </div>
-                  </motion.div>
-                )}
-              </div>
-
+            {/* Logs Table */}
+            <div className="overflow-x-auto rounded-xl border border-[var(--t2t-border)] bg-[var(--t2t-surface-hover)]/40">
+              <table className="w-full text-left text-xs text-[var(--t2t-text)]">
+                <thead className="bg-[#121216] border-b border-[var(--t2t-border)] text-[var(--t2t-text-muted)] uppercase tracking-wider font-semibold">
+                  <tr>
+                    <th className="p-3">Timestamp</th>
+                    <th className="p-3">Category</th>
+                    <th className="p-3">Recipient</th>
+                    <th className="p-3">Template</th>
+                    <th className="p-3">Provider</th>
+                    <th className="p-3 text-right">Status / Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--t2t-border)]">
+                  {loadingLogs ? (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-[var(--t2t-text-muted)]">
+                        <RefreshCw size={16} className="animate-spin inline-block mr-2" /> Querying central email logs...
+                      </td>
+                    </tr>
+                  ) : logs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-[var(--t2t-text-muted)]">
+                        No email logs found for this category.
+                      </td>
+                    </tr>
+                  ) : (
+                    logs.map((log) => (
+                      <tr key={log.id} className="hover:bg-[var(--t2t-surface-hover)]/80 transition-colors">
+                        <td className="p-3 font-mono text-[11px] text-[var(--t2t-text-muted)]">
+                          {new Date(log.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </td>
+                        <td className="p-3 font-semibold uppercase text-[10px] tracking-wider text-[var(--t2t-primary)]">
+                          {log.category || "general"}
+                        </td>
+                        <td className="p-3 font-medium text-[var(--t2t-text)] max-w-[160px] truncate">
+                          {log.recipient}
+                        </td>
+                        <td className="p-3 text-[var(--t2t-text-secondary)] font-mono text-[11px]">
+                          {log.template}
+                        </td>
+                        <td className="p-3 font-semibold uppercase text-[10px] tracking-wider text-[var(--t2t-text-muted)]">
+                          {log.provider}
+                        </td>
+                        <td className="p-3 text-right flex items-center justify-end gap-2">
+                          {log.status === "sent" || log.status === "delivered" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20">
+                              <CheckCircle2 size={10} /> Sent
+                            </span>
+                          ) : (
+                            <div className="flex items-center justify-end gap-2">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-bold text-red-400 border border-red-500/20">
+                                <XCircle size={10} /> Failed
+                              </span>
+                              <button
+                                onClick={() => handleRetryEmail(log.id)}
+                                disabled={retryingLogId === log.id}
+                                className="p-1 rounded bg-[var(--t2t-primary)]/10 text-[var(--t2t-primary)] hover:bg-[var(--t2t-primary)] hover:text-black transition-colors cursor-pointer"
+                                title="Retry sending email"
+                              >
+                                <RotateCw size={12} className={retryingLogId === log.id ? "animate-spin" : ""} />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );
